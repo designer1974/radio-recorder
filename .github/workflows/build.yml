@@ -1,0 +1,56 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      # Genera i file Android mancanti (gradle, icone...) senza toccare i nostri
+      - name: Prepara progetto Android
+        run: |
+          flutter create --platforms=android --org com.designer1974 --project-name radio_recorder .
+          rm -f test/widget_test.dart
+          # L'audio interno richiede Android 10 (API 29)
+          for f in android/app/build.gradle.kts android/app/build.gradle; do
+            [ -f "$f" ] && sed -i -E 's/minSdk( =|Version)? *flutter\.minSdkVersion/minSdk = 29/' "$f" && grep -n "minSdk" "$f" || true
+          done
+
+      - run: flutter pub get
+
+      - name: Compila APK
+        run: flutter build apk --release
+
+      - name: Rinomina APK
+        run: cp build/app/outputs/flutter-apk/app-release.apk RadioRecorder.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RadioRecorder
+          path: RadioRecorder.apk
+
+      # Pubblica l'APK nella pagina "Releases" per scaricarlo facilmente dal telefono
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Radio Recorder build ${{ github.run_number }}
+          files: RadioRecorder.apk
+          make_latest: true
