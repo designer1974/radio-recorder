@@ -41,6 +41,8 @@ class RecordService : Service() {
         private const val TAG = "RecordService"
 
         @Volatile var instance: RecordService? = null
+        /** Livello attuale 0..1 (picco dell'ultimo blocco letto). */
+        @Volatile var level = 0f
         var onStarted: ((String?) -> Unit)? = null
         var onStopped: (() -> Unit)? = null
 
@@ -184,11 +186,15 @@ class RecordService : Service() {
                     if (n < 0) break
                     if (n == 0) continue
                     if (softClean) filter.process(buf, n)
+                    var peak = 0
                     for (i in 0 until n) {
                         val s = buf[i].toInt()
+                        val a = if (s < 0) -s else s
+                        if (a > peak) peak = a
                         bytes[2 * i] = (s and 0xff).toByte()
                         bytes[2 * i + 1] = ((s shr 8) and 0xff).toByte()
                     }
+                    level = peak / 32768f
                     out.write(bytes, 0, n * 2)
                     total += n * 2
                 }
@@ -216,6 +222,7 @@ class RecordService : Service() {
 
     private fun cleanup() {
         running = false
+        level = 0f
         try { record?.stop() } catch (_: Exception) {}
         try { thread?.join(3000) } catch (_: Exception) {}
         try { record?.release() } catch (_: Exception) {}

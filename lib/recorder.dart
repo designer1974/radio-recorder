@@ -26,6 +26,10 @@ class Recorder {
 
   static Future<void> stop() => _ch.invokeMethod('stop');
 
+  /// Livello del suono in questo momento (0..1).
+  static Future<double> level() async =>
+      (await _ch.invokeMethod<double>('level')) ?? 0;
+
   static Future<bool> isRecording() async =>
       (await _ch.invokeMethod<bool>('isRecording')) ?? false;
 }

@@ -33,6 +33,7 @@ class MainActivity : FlutterActivity() {
                     result.success(null)
                 }
                 "isRecording" -> result.success(RecordService.instance != null)
+                "level" -> result.success(RecordService.level.toDouble())
                 else -> result.notImplemented()
             }
         }

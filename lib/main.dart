@@ -9,7 +9,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import 'flags.dart';
+import 'editor.dart';
 import 'name_dialog.dart';
+import 'rec_panel.dart';
 import 'recorder.dart';
 import 'settings_page.dart';
 
@@ -102,6 +104,7 @@ class _HomePageState extends State<HomePage> {
   DateTime? _startedAt;
   String? _tmpPath;
   Timer? _ticker;
+  final List<double> _levels = [];
 
   @override
   void initState() {
@@ -179,8 +182,18 @@ class _HomePageState extends State<HomePage> {
         _startedAt = DateTime.now();
         _tmpPath = tmp;
       });
-      _ticker = Timer.periodic(
-          const Duration(seconds: 1), (_) => setState(() {}));
+      _levels.clear();
+      _ticker = Timer.periodic(const Duration(milliseconds: 80), (_) async {
+        double v = 0;
+        try {
+          v = await Recorder.level();
+        } catch (_) {}
+        if (!mounted || !_recording) return;
+        setState(() {
+          _levels.add(v);
+          if (_levels.length > 400) _levels.removeRange(0, 100);
+        });
+      });
     } on PlatformException catch (e) {
       _snack(e.message ?? 'Errore durante l\'avvio');
     }
@@ -234,6 +247,18 @@ class _HomePageState extends State<HomePage> {
     }
     await r.file.rename(_uniquePath(name, except: r.file.path));
     await _load();
+  }
+
+  Future<void> _edit(Rec r) async {
+    if (_recording) return;
+    await _player.stop();
+    setState(() => _playing = null);
+    final changed = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+          builder: (_) => EditorPage(path: r.file.path, name: r.name)),
+    );
+    if (changed == true) await _load();
   }
 
   Future<void> _delete(Rec r) async {
@@ -355,15 +380,22 @@ class _HomePageState extends State<HomePage> {
         ],
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _dir == null ? null : _toggleRecord,
-        backgroundColor: _recording ? scheme.error : scheme.primary,
-        foregroundColor: _recording ? scheme.onError : scheme.onPrimary,
-        icon: Icon(_recording ? Icons.stop_rounded : Icons.fiber_manual_record),
-        label: Text(_recording
-            ? 'Ferma  ${_fmtDur(elapsed)}'
-            : 'Registra · ${_settings.internal ? 'interno' : 'microfono'}'),
-      ),
+      floatingActionButton: _recording
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: _dir == null ? null : _toggleRecord,
+              icon: const Icon(Icons.fiber_manual_record, color: Colors.red),
+              label: Text(
+                  'Registra · ${_settings.internal ? 'interno' : 'microfono'}'),
+            ),
+      bottomNavigationBar: _recording
+          ? RecPanel(
+              elapsed: elapsed,
+              levels: _levels,
+              internal: _settings.internal,
+              onStop: _toggleRecord,
+            )
+          : null,
     );
   }
 
@@ -394,11 +426,17 @@ class _HomePageState extends State<HomePage> {
           ),
           PopupMenuButton<String>(
             onSelected: (v) {
+              if (v == 'edit') _edit(r);
               if (v == 'rename') _rename(r);
               if (v == 'share') _share(r);
               if (v == 'delete') _delete(r);
             },
             itemBuilder: (_) => const [
+              PopupMenuItem(
+                  value: 'edit',
+                  child: ListTile(
+                      leading: Icon(Icons.content_cut),
+                      title: Text('Modifica / Taglia'))),
               PopupMenuItem(
                   value: 'rename',
                   child: ListTile(
