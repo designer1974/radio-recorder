@@ -27,7 +27,7 @@ class RadioRecorderApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Radio Recorder',
+      title: 'Devoo Recorder',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(colorSchemeSeed: _seed, useMaterial3: true),
       darkTheme: ThemeData(
@@ -398,7 +398,7 @@ class _HomePageState extends State<HomePage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Radio Recorder'),
+        title: const Text('Devoo Recorder'),
         actions: [
           IconButton(
             icon: const Icon(Icons.settings_outlined),

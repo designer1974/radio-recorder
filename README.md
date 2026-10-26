@@ -1,4 +1,4 @@
-# Radio Recorder
+# Devoo Recorder
 
 Registratore audio avanzato per Android (Flutter + Kotlin).
 

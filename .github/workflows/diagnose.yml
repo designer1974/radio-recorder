@@ -30,6 +30,7 @@ jobs:
           flutter pub get
           echo "::notice title=Versioni::$(flutter pub deps --style=compact | grep -E 'mlkit|whisper|ffmpeg|share_plus|audioplayers' | tr '\n' ' ')"
           echo "::notice title=Gradle::$(grep -nE 'minify|shrink|proguard|signingConfig' android/app/build.gradle* | tr '\n' ' ')"
+          grep -rn "proguard-rules" $(dirname $(which flutter))/../packages/flutter_tools/gradle/src/main/ 2>/dev/null | head -3 | sed 's/^/::notice title=FlutterGradle::/' || true
       - name: Compila (x86_64 per emulatore)
         run: flutter build apk --release --target-platform android-x64 > out.txt 2>&1 || { tail -30 out.txt; exit 1; }
       - name: Abilita KVM
@@ -50,5 +51,6 @@ jobs:
             adb shell am start -n com.designer1974.radio_recorder/.MainActivity
             sleep 25
             adb logcat -d > logcat.txt
-            echo "::notice title=Plugin::$(grep -iE 'GeneratedPluginRegistrant|Error registering|MissingPlugin|mlkit|translat|FATAL|AndroidRuntime' logcat.txt | head -40 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
-            echo "::notice title=Eccezioni::$(grep -iE -A6 'Exception|Caused by' logcat.txt | grep -v 'chatty' | head -60 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
+            echo "::notice title=Plugin::$(grep -iE 'Error registering|MissingPlugin|Could not instantiate|FATAL|AndroidRuntime' logcat.txt | head -40 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
+            echo "::notice title=Esito::righe errore plugin = $(grep -ciE 'Error registering|Could not instantiate' logcat.txt)"
+            echo "::notice title=Eccezioni-app::$(grep -E " $(adb shell pidof com.designer1974.radio_recorder | tr -d '\r') " logcat.txt | grep -iE -A4 'Exception|Caused by' | grep -v 'chatty' | head -60 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
