@@ -34,17 +34,27 @@ jobs:
             [ -f "$f" ] && sed -i -E 's/minSdk( =|Version)? *flutter\.minSdkVersion/minSdk = 29/' "$f" && grep -n "minSdk" "$f" || true
           done
 
-      - run: flutter pub get
+      - name: Dipendenze
+        run: |
+          report() { msg=$(grep -E "$2" "$1" | head -40 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}'); [ -z "$msg" ] && msg=$(tail -40 "$1" | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}'); echo "::error title=$3::$msg"; }
+          flutter pub get > out.txt 2>&1 || { report out.txt "because|depends|incompatible|version solving" PubGet; exit 1; }
 
       - name: Controllo codice
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+        run: |
+          report() { msg=$(grep -E "$2" "$1" | head -40 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}'); [ -z "$msg" ] && msg=$(tail -40 "$1" | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}'); echo "::error title=$3::$msg"; }
+          flutter analyze --no-fatal-infos --no-fatal-warnings > out.txt 2>&1 || { report out.txt "error •" Analyze; exit 1; }
 
       - name: Test
-        run: flutter test
+        run: |
+          report() { msg=$(grep -E "$2" "$1" | head -40 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}'); [ -z "$msg" ] && msg=$(tail -40 "$1" | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}'); echo "::error title=$3::$msg"; }
+          flutter test > out.txt 2>&1 || { report out.txt "Expected|Actual|Error|error|FAILED|\\.dart:[0-9]+" Test; exit 1; }
 
       # Un APK per tipo di processore: molto più leggero
       - name: Compila APK
-        run: flutter build apk --release --split-per-abi --target-platform android-arm64,android-arm
+        run: |
+          report() { msg=$(grep -E "$2" "$1" | head -40 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}'); [ -z "$msg" ] && msg=$(tail -40 "$1" | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}'); echo "::error title=$3::$msg"; }
+          flutter build apk --release --split-per-abi --target-platform android-arm64,android-arm > out.txt 2>&1 || { report out.txt "error|What went wrong|e: |FAILURE|Could not" Build; exit 1; }
+          tail -5 out.txt
 
       - name: Rinomina APK
         run: |
