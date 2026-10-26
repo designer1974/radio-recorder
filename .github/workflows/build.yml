@@ -25,6 +25,12 @@ jobs:
           cache: true
 
       # Genera i file Android mancanti (gradle, icone...) senza toccare i nostri
+      # NDK richiesto da Whisper (codice C++ compilato per il telefono)
+      - name: Installa NDK
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;29.0.13113456" > /dev/null
+
       - name: Prepara progetto Android
         run: |
           flutter create --platforms=android --org com.designer1974 --project-name radio_recorder .
