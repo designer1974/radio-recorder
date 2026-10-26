@@ -112,8 +112,8 @@ class WhisperService {
     await convertInBackground(wavPath, tmp);
 
     onStage('Trascrivo… 0%', 0);
-    TranscribeResult? res;
-    Future<TranscribeResult?> run(String? vadPath) => _ctrl.transcribe(
+    // (il tipo del risultato non è esportato dalla libreria)
+    Future<dynamic> run(String? vadPath) => _ctrl.transcribe(
           model: quality.model,
           audioPath: tmp,
           lang: lang,
@@ -124,7 +124,7 @@ class WhisperService {
           vadSpeechPadMs: vadPath == null ? null : 200,
           onProgress: (p) => onStage('Trascrivo… $p%', p / 100),
         );
-    res = await run(vad);
+    dynamic res = await run(vad);
     if (res == null && vad != null) res = await run(null); // riprova senza VAD
 
     for (final f in [tmp, '$tmp.wav']) {
@@ -135,13 +135,14 @@ class WhisperService {
     if (res == null) {
       throw Exception('Trascrizione non riuscita');
     }
-    final segs = (res.transcription.segments ?? [])
+    final WhisperTranscribeResponse tr = res.transcription;
+    final segs = (tr.segments ?? [])
         .map((s) => RawSeg(
             s.fromTs.inMilliseconds, s.toTs.inMilliseconds, s.text))
         .toList();
     var lines = buildLines(segs);
-    if (lines.isEmpty && res.transcription.text.trim().isNotEmpty) {
-      lines = buildLines([RawSeg(0, 0, res.transcription.text)]);
+    if (lines.isEmpty && tr.text.trim().isNotEmpty) {
+      lines = buildLines([RawSeg(0, 0, tr.text)]);
     }
     return Transcript(lang == 'auto' ? '' : lang, quality.name, lines);
   }
