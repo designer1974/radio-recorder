@@ -14,6 +14,8 @@ import 'name_dialog.dart';
 import 'rec_panel.dart';
 import 'recorder.dart';
 import 'settings_page.dart';
+import 'transcript.dart';
+import 'transcript_page.dart';
 
 void main() => runApp(const RadioRecorderApp());
 
@@ -245,7 +247,9 @@ class _HomePageState extends State<HomePage> {
       await _player.stop();
       _playing = null;
     }
-    await r.file.rename(_uniquePath(name, except: r.file.path));
+    final dst = _uniquePath(name, except: r.file.path);
+    await r.file.rename(dst);
+    moveTranscript(r.file.path, dst);
     await _load();
   }
 
@@ -259,6 +263,18 @@ class _HomePageState extends State<HomePage> {
           builder: (_) => EditorPage(path: r.file.path, name: r.name)),
     );
     if (changed == true) await _load();
+  }
+
+  Future<void> _text(Rec r) async {
+    if (_recording) return;
+    await _player.stop();
+    setState(() => _playing = null);
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+          builder: (_) => TranscriptPage(path: r.file.path, name: r.name)),
+    );
+    if (mounted) setState(() {});
   }
 
   Future<void> _delete(Rec r) async {
@@ -283,6 +299,7 @@ class _HomePageState extends State<HomePage> {
       _playing = null;
     }
     await r.file.delete();
+    deleteTranscript(r.file.path);
     await _load();
   }
 
@@ -361,8 +378,10 @@ class _HomePageState extends State<HomePage> {
                           Icon(Icons.graphic_eq,
                               size: 64, color: scheme.primary),
                           const SizedBox(height: 12),
-                          const Text(
-                            'Nessuna registrazione.\nApri la tua radio e premi Registra.',
+                          Text(
+                            _recording
+                                ? 'Registrazione in corso…\nDopo, nel menu ⋮ scegli «Testo» per vedere tutto quello che dice la radio.'
+                                : 'Nessuna registrazione.\nApri la tua radio e premi Registra.',
                             textAlign: TextAlign.center,
                           ),
                         ],
@@ -410,8 +429,19 @@ class _HomePageState extends State<HomePage> {
             : Icon(Icons.audiotrack, color: scheme.onPrimaryContainer),
       ),
       title: Text(r.title, maxLines: 2, overflow: TextOverflow.ellipsis),
-      subtitle: Text(
-          '${_fmtDate(r.date)} · ${_fmtDur(r.duration)} · ${_fmtSize(r.size)}'),
+      subtitle: Text.rich(TextSpan(children: [
+        TextSpan(
+            text:
+                '${_fmtDate(r.date)} · ${_fmtDur(r.duration)} · ${_fmtSize(r.size)}'),
+        if (hasTranscript(r.file.path))
+          WidgetSpan(
+            alignment: PlaceholderAlignment.middle,
+            child: Padding(
+              padding: const EdgeInsets.only(left: 6),
+              child: Icon(Icons.subtitles, size: 16, color: scheme.primary),
+            ),
+          ),
+      ])),
       onTap: () => _play(r),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
@@ -426,12 +456,18 @@ class _HomePageState extends State<HomePage> {
           ),
           PopupMenuButton<String>(
             onSelected: (v) {
+              if (v == 'text') _text(r);
               if (v == 'edit') _edit(r);
               if (v == 'rename') _rename(r);
               if (v == 'share') _share(r);
               if (v == 'delete') _delete(r);
             },
             itemBuilder: (_) => const [
+              PopupMenuItem(
+                  value: 'text',
+                  child: ListTile(
+                      leading: Icon(Icons.subtitles_outlined),
+                      title: Text('Testo (trascrizione)'))),
               PopupMenuItem(
                   value: 'edit',
                   child: ListTile(

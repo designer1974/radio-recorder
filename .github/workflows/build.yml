@@ -42,21 +42,27 @@ jobs:
       - name: Test
         run: flutter test
 
+      # Un APK per tipo di processore: molto più leggero
       - name: Compila APK
-        run: flutter build apk --release
+        run: flutter build apk --release --split-per-abi --target-platform android-arm64,android-arm
 
       - name: Rinomina APK
-        run: cp build/app/outputs/flutter-apk/app-release.apk RadioRecorder.apk
+        run: |
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk RadioRecorder.apk
+          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk RadioRecorder-telefoni-vecchi.apk
+          ls -la *.apk
 
       - uses: actions/upload-artifact@v4
         with:
           name: RadioRecorder
-          path: RadioRecorder.apk
+          path: '*.apk'
 
       # Pubblica l'APK nella pagina "Releases" per scaricarlo facilmente dal telefono
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
           name: Radio Recorder build ${{ github.run_number }}
-          files: RadioRecorder.apk
+          files: |
+            RadioRecorder.apk
+            RadioRecorder-telefoni-vecchi.apk
           make_latest: true

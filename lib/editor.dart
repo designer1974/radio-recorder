@@ -7,6 +7,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import 'transcript.dart';
 import 'wav_edit.dart';
 
 /// Editor avanzato: forma d'onda con zoom, selezione,
@@ -338,6 +339,7 @@ class _EditorPageState extends State<EditorPage> {
         await renderInBackground(src, segs, tmp);
         await File(src).delete();
         await File(tmp).rename(src);
+        deleteTranscript(src); // l'audio è cambiato: il testo va rifatto
       } else {
         var dst = '$dir/${widget.name} (tagliata).wav';
         var i = 2;
