@@ -7,6 +7,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import 'recorder.dart';
 import 'transcript.dart';
 import 'wav_edit.dart';
 
@@ -15,7 +16,12 @@ import 'wav_edit.dart';
 class EditorPage extends StatefulWidget {
   final String path;
   final String name;
-  const EditorPage({super.key, required this.path, required this.name});
+  final AudioQuality quality; // per ricomprimere i file M4A
+  const EditorPage(
+      {super.key,
+      required this.path,
+      required this.name,
+      this.quality = AudioQuality.voice});
 
   @override
   State<EditorPage> createState() => _EditorPageState();
@@ -24,10 +30,12 @@ class EditorPage extends StatefulWidget {
 enum _Drag { none, newSel, edgeA, edgeB, zoom }
 
 class _EditorPageState extends State<EditorPage> {
-  late final WavInfo _info;
+  WavInfo _info = WavInfo(2, 48000, 44, 0);
+  late final String _src; // WAV su cui si lavora (decodificato se M4A)
+  double? _decodeProgress;
   Uint8List? _peaks; // forma d'onda originale
-  late List<Seg> _orig;
-  late List<Seg> _segs;
+  List<Seg> _orig = const [];
+  List<Seg> _segs = const [];
   Uint8List _ep = Uint8List(0); // forma d'onda modificata
   final _undo = <List<Seg>>[];
   final _redo = <List<Seg>>[];
@@ -62,10 +70,9 @@ class _EditorPageState extends State<EditorPage> {
   @override
   void initState() {
     super.initState();
-    _info = readWavInfo(widget.path);
-    _orig = _info.blocks > 0 ? [Seg(0, _info.blocks)] : [];
-    _segs = _orig;
-    _previewPath = '${File(widget.path).parent.path}/.preview.wav';
+    final dir = File(widget.path).parent.path;
+    _src = isCompressed(widget.path) ? '$dir/.edit_src.wav' : widget.path;
+    _previewPath = '$dir/.preview.wav';
     _posSub = _player.onPositionChanged.listen(_onPos);
     _doneSub = _player.onPlayerComplete.listen((_) {
       if (mounted) setState(() => _playing = false);
@@ -74,10 +81,26 @@ class _EditorPageState extends State<EditorPage> {
   }
 
   Future<void> _load() async {
-    final path = widget.path;
+    if (_src != widget.path) {
+      try {
+        await Recorder.toWav(widget.path, _src,
+            progress: (v) => mounted ? setState(() => _decodeProgress = v) : null);
+      } catch (e) {
+        if (mounted) {
+          _snack('Impossibile aprire il file: $e');
+          Navigator.pop(context, false);
+        }
+        return;
+      }
+    }
+    final path = _src;
+    final info = readWavInfo(path);
     final p = await peaksInBackground(path);
     if (!mounted) return;
     setState(() {
+      _info = info;
+      _orig = info.blocks > 0 ? [Seg(0, info.blocks)] : [];
+      _segs = _orig;
       _peaks = p;
       _rebuild();
       _fit();
@@ -89,9 +112,11 @@ class _EditorPageState extends State<EditorPage> {
     _posSub?.cancel();
     _doneSub?.cancel();
     _player.dispose();
-    try {
-      File(_previewPath).deleteSync();
-    } catch (_) {}
+    for (final f in [_previewPath, if (_src != widget.path) _src]) {
+      try {
+        File(f).deleteSync();
+      } catch (_) {}
+    }
     super.dispose();
   }
 
@@ -243,7 +268,7 @@ class _EditorPageState extends State<EditorPage> {
   Future<void> _ensurePreview() async {
     if (identical(_previewFor, _segs)) return;
     setState(() => _busy = 'Preparo l\'anteprima…');
-    final segs = _segs, src = widget.path, dst = _previewPath;
+    final segs = _segs, src = _src, dst = _previewPath;
     await _player.release();
     await renderInBackground(src, segs, dst);
     await _player.setSource(DeviceFileSource(dst));
@@ -331,23 +356,43 @@ class _EditorPageState extends State<EditorPage> {
     await _player.release();
     _previewFor = null;
     setState(() => _busy = 'Salvataggio…');
-    final segs = _segs, src = widget.path;
-    final dir = File(src).parent.path;
+    final segs = _segs, src = _src, orig = widget.path;
+    final dir = File(orig).parent.path;
+    final comp = isCompressed(orig);
+    final ext = comp ? 'm4a' : 'wav';
+    // scrive il risultato in [dst]: WAV diretto, oppure WAV temporaneo -> M4A
+    Future<void> write(String dst) async {
+      if (!comp) {
+        await renderInBackground(src, segs, dst);
+        return;
+      }
+      final wav = '$dir/.save_tmp.wav';
+      await renderInBackground(src, segs, wav);
+      setState(() => _busy = 'Comprimo…');
+      try {
+        await Recorder.toM4a(wav, dst, widget.quality);
+      } finally {
+        try {
+          File(wav).deleteSync();
+        } catch (_) {}
+      }
+    }
+
     try {
       if (choice == 'replace') {
-        final tmp = '$dir/.save_tmp.wav';
-        await renderInBackground(src, segs, tmp);
-        await File(src).delete();
-        await File(tmp).rename(src);
-        deleteTranscript(src); // l'audio è cambiato: il testo va rifatto
+        final tmp = '$dir/.save_tmp2.$ext';
+        await write(tmp);
+        await File(orig).delete();
+        await File(tmp).rename(orig);
+        deleteTranscript(orig); // l'audio è cambiato: il testo va rifatto
       } else {
-        var dst = '$dir/${widget.name} (tagliata).wav';
+        var dst = '$dir/${widget.name} (tagliata).$ext';
         var i = 2;
         while (File(dst).existsSync()) {
-          dst = '$dir/${widget.name} (tagliata $i).wav';
+          dst = '$dir/${widget.name} (tagliata $i).$ext';
           i++;
         }
-        await renderInBackground(src, segs, dst);
+        await write(dst);
       }
       _saved = true;
       if (mounted) Navigator.pop(context, true);
@@ -494,13 +539,15 @@ class _EditorPageState extends State<EditorPage> {
           ],
         ),
         body: _peaks == null
-            ? const Center(
+            ? Center(
                 child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 12),
-                  Text('Analizzo l\'audio…'),
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 12),
+                  Text(_decodeProgress == null
+                      ? 'Analizzo l\'audio…'
+                      : 'Preparo l\'audio… ${(_decodeProgress! * 100).round()}%'),
                 ],
               ))
             : Stack(

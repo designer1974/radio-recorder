@@ -34,12 +34,48 @@ class MainActivity : FlutterActivity() {
                 }
                 "isRecording" -> result.success(RecordService.instance != null)
                 "level" -> result.success(RecordService.level.toDouble())
+                "duration" -> {
+                    val path = call.argument<String>("path")!!
+                    Thread {
+                        val d = AudioTools.durationMs(path)
+                        runOnUiThread { result.success(d) }
+                    }.start()
+                }
+                "toM4a" -> background(result) { report ->
+                    AudioTools.wavToM4a(
+                        call.argument<String>("src")!!,
+                        call.argument<String>("dst")!!,
+                        call.argument<Int>("bitrate")!!,
+                        call.argument<Int>("outCh")!!,
+                        call.argument<Boolean>("he")!!,
+                        report,
+                    )
+                }
+                "toWav" -> background(result) { report ->
+                    AudioTools.toWav(
+                        call.argument<String>("src")!!,
+                        call.argument<String>("dst")!!,
+                        report,
+                    )
+                }
                 else -> result.notImplemented()
             }
         }
         RecordService.onStopped = {
             runOnUiThread { channel?.invokeMethod("stopped", null) }
         }
+    }
+
+    /** Lavoro pesante in un thread, con avanzamento verso Flutter. */
+    private fun background(result: MethodChannel.Result, work: ((Double) -> Unit) -> Unit) {
+        Thread {
+            try {
+                work { p -> runOnUiThread { channel?.invokeMethod("progress", p) } }
+                runOnUiThread { result.success(null) }
+            } catch (e: Exception) {
+                runOnUiThread { result.error("CODEC", e.message ?: "Errore audio", null) }
+            }
+        }.start()
     }
 
     private fun start(a: Map<*, *>, result: MethodChannel.Result) {
@@ -97,6 +133,9 @@ class MainActivity : FlutterActivity() {
             .putExtra(RecordService.EXTRA_INTERNAL, a["internal"] == true)
             .putExtra(RecordService.EXTRA_NOISE, a["noise"] == true)
             .putExtra(RecordService.EXTRA_CODE, code)
+            .putExtra(RecordService.EXTRA_BITRATE, (a["bitrate"] as? Int) ?: 0)
+            .putExtra(RecordService.EXTRA_OUT_CH, (a["outCh"] as? Int) ?: 2)
+            .putExtra(RecordService.EXTRA_HE, (a["he"] as? Boolean) ?: true)
         if (data != null) i.putExtra(RecordService.EXTRA_DATA, data)
         RecordService.onStarted = { err ->
             runOnUiThread {

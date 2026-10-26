@@ -47,7 +47,7 @@ class Rec {
   final String? flag;
   final String title;
   final DateTime date;
-  final Duration duration;
+  Duration duration;
   final int size;
 
   Rec(this.file, this.name, this.flag, this.title, this.date, this.duration,
@@ -57,6 +57,11 @@ class Rec {
     final stat = f.statSync();
     final base = f.path.split('/').last;
     final name = base.substring(0, base.length - 4);
+    if (isCompressed(f.path)) {
+      // durata letta dopo (dal sistema)
+      return Rec(f, name, leadingFlag(name), stripFlag(name), stat.modified,
+          Duration.zero, stat.size);
+    }
     var ch = 2, rate = 48000;
     try {
       final raf = f.openSync();
@@ -135,12 +140,21 @@ class _HomePageState extends State<HomePage> {
     final list = <Rec>[];
     for (final e in _dir!.listSync()) {
       final base = e.path.split('/').last;
-      if (e is File && base.endsWith('.wav') && !base.startsWith('.')) {
+      final low = base.toLowerCase();
+      if (e is File &&
+          (low.endsWith('.wav') || low.endsWith('.m4a')) &&
+          !base.startsWith('.')) {
         list.add(Rec.fromFile(e));
       }
     }
     list.sort((a, b) => b.date.compareTo(a.date));
     if (mounted) setState(() => _recs = list);
+    for (final r in list.where((r) => isCompressed(r.file.path))) {
+      try {
+        r.duration = Duration(milliseconds: await Recorder.durationMs(r.file.path));
+      } catch (_) {}
+    }
+    if (mounted) setState(() {});
   }
 
   void _snack(String msg) => ScaffoldMessenger.of(context)
@@ -149,11 +163,11 @@ class _HomePageState extends State<HomePage> {
   String _clean(String name) =>
       name.replaceAll(RegExp(r'[/\\:*?"<>|\n]'), '-').trim();
 
-  String _uniquePath(String name, {String? except}) {
-    var p = '${_dir!.path}/$name.wav';
+  String _uniquePath(String name, {String? except, String ext = 'wav'}) {
+    var p = '${_dir!.path}/$name.$ext';
     var i = 2;
     while (File(p).existsSync() && p != except) {
-      p = '${_dir!.path}/$name ($i).wav';
+      p = '${_dir!.path}/$name ($i).$ext';
       i++;
     }
     return p;
@@ -172,12 +186,13 @@ class _HomePageState extends State<HomePage> {
     await _player.stop();
     setState(() => _playing = null);
     final tmp =
-        '${_dir!.path}/.tmp_${DateTime.now().millisecondsSinceEpoch}.wav';
+        '${_dir!.path}/.tmp_${DateTime.now().millisecondsSinceEpoch}.${_settings.quality.ext}';
     try {
       await Recorder.start(
         path: tmp,
         internal: _settings.internal,
         noise: _settings.noise,
+        quality: _settings.quality,
       );
       setState(() {
         _recording = true;
@@ -217,7 +232,8 @@ class _HomePageState extends State<HomePage> {
     final res = await showNameDialog(context,
         title: def, autoFlag: _settings.autoFlag);
     final name = _clean(res?.fileName ?? def);
-    await tmp.rename(_uniquePath(name.isEmpty ? def : name));
+    await tmp.rename(_uniquePath(name.isEmpty ? def : name,
+        ext: tmp.path.split('.').last));
     await _load();
   }
 
@@ -247,7 +263,8 @@ class _HomePageState extends State<HomePage> {
       await _player.stop();
       _playing = null;
     }
-    final dst = _uniquePath(name, except: r.file.path);
+    final dst = _uniquePath(name,
+        except: r.file.path, ext: r.file.path.split('.').last);
     await r.file.rename(dst);
     moveTranscript(r.file.path, dst);
     await _load();
@@ -260,7 +277,10 @@ class _HomePageState extends State<HomePage> {
     final changed = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
-          builder: (_) => EditorPage(path: r.file.path, name: r.name)),
+          builder: (_) => EditorPage(
+              path: r.file.path,
+              name: r.name,
+              quality: _settings.compressQuality)),
     );
     if (changed == true) await _load();
   }
@@ -275,6 +295,58 @@ class _HomePageState extends State<HomePage> {
           builder: (_) => TranscriptPage(path: r.file.path, name: r.name)),
     );
     if (mounted) setState(() {});
+  }
+
+  Future<void> _compress(Rec r) async {
+    if (_recording) return;
+    await _player.stop();
+    setState(() => _playing = null);
+    final q = _settings.compressQuality;
+    final dst = _uniquePath(r.name, ext: 'm4a');
+    final progress = ValueNotifier<double>(0);
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          title: const Text('Comprimo…'),
+          content: ValueListenableBuilder<double>(
+            valueListenable: progress,
+            builder: (_, v, __) => Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                LinearProgressIndicator(value: v > 0 ? v : null),
+                const SizedBox(height: 12),
+                Text('Qualità ${q.label} · ${(v * 100).round()}%'),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    try {
+      await Recorder.toM4a(r.file.path, dst, q,
+          progress: (v) => progress.value = v);
+      final before = r.size;
+      final after = File(dst).lengthSync();
+      moveTranscript(r.file.path, dst);
+      await r.file.delete();
+      if (mounted) {
+        Navigator.of(context).pop();
+        _snack('Fatto: ${_fmtSize(before)} → ${_fmtSize(after)}');
+      }
+    } catch (e) {
+      try {
+        File(dst).deleteSync();
+      } catch (_) {}
+      if (mounted) {
+        Navigator.of(context).pop();
+        _snack('Compressione non riuscita: $e');
+      }
+    }
+    await _load();
   }
 
   Future<void> _delete(Rec r) async {
@@ -304,7 +376,11 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _share(Rec r) async {
-    await Share.shareXFiles([XFile(r.file.path, mimeType: 'audio/wav')],
+    await Share.shareXFiles(
+        [
+          XFile(r.file.path,
+              mimeType: isCompressed(r.file.path) ? 'audio/mp4' : 'audio/wav')
+        ],
         text: r.name);
   }
 
@@ -457,33 +533,40 @@ class _HomePageState extends State<HomePage> {
           PopupMenuButton<String>(
             onSelected: (v) {
               if (v == 'text') _text(r);
+              if (v == 'compress') _compress(r);
               if (v == 'edit') _edit(r);
               if (v == 'rename') _rename(r);
               if (v == 'share') _share(r);
               if (v == 'delete') _delete(r);
             },
-            itemBuilder: (_) => const [
-              PopupMenuItem(
+            itemBuilder: (_) => [
+              if (!isCompressed(r.file.path))
+                const PopupMenuItem(
+                    value: 'compress',
+                    child: ListTile(
+                        leading: Icon(Icons.compress_rounded),
+                        title: Text('Comprimi (risparmia spazio)'))),
+              const PopupMenuItem(
                   value: 'text',
                   child: ListTile(
                       leading: Icon(Icons.subtitles_outlined),
                       title: Text('Testo (trascrizione)'))),
-              PopupMenuItem(
+              const PopupMenuItem(
                   value: 'edit',
                   child: ListTile(
                       leading: Icon(Icons.content_cut),
                       title: Text('Modifica / Taglia'))),
-              PopupMenuItem(
+              const PopupMenuItem(
                   value: 'rename',
                   child: ListTile(
                       leading: Icon(Icons.edit_outlined),
                       title: Text('Rinomina'))),
-              PopupMenuItem(
+              const PopupMenuItem(
                   value: 'share',
                   child: ListTile(
                       leading: Icon(Icons.share_outlined),
                       title: Text('Condividi (WhatsApp, email…)'))),
-              PopupMenuItem(
+              const PopupMenuItem(
                   value: 'delete',
                   child: ListTile(
                       leading: Icon(Icons.delete_outline),

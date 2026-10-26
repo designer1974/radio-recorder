@@ -60,6 +60,21 @@ class _SettingsPageState extends State<SettingsPage> {
             value: s.noise,
             onChanged: (v) => _set(() => s.noise = v),
           ),
+          const SizedBox(height: 8),
+          Text('Qualità e spazio', style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: 4),
+          for (final q in AudioQuality.values)
+            RadioListTile<AudioQuality>(
+              contentPadding: EdgeInsets.zero,
+              value: q,
+              groupValue: s.quality,
+              title: Text(q == AudioQuality.voice
+                  ? '${q.label}  ★ consigliata'
+                  : q.label),
+              subtitle: Text(q.info),
+              onChanged: (v) => _set(() => s.quality = v!),
+            ),
+          const SizedBox(height: 8),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text('Bandiera automatica'),

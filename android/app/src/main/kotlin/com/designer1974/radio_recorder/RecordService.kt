@@ -37,6 +37,9 @@ class RecordService : Service() {
         const val EXTRA_NOISE = "noise"
         const val EXTRA_CODE = "code"
         const val EXTRA_DATA = "data"
+        const val EXTRA_BITRATE = "bitrate" // 0 = WAV senza compressione
+        const val EXTRA_OUT_CH = "outCh"
+        const val EXTRA_HE = "he"
         private const val RATE = 48000
         private const val TAG = "RecordService"
 
@@ -162,13 +165,23 @@ class RecordService : Service() {
             suppressor = NoiseSuppressor.create(rec.audioSessionId)?.apply { enabled = true }
         }
 
-        val out = RandomAccessFile(File(path), "rw")
-        out.setLength(0)
-        out.write(ByteArray(44)) // spazio per l'intestazione WAV
+        val bitrate = intent.getIntExtra(EXTRA_BITRATE, 0)
+        // WAV: file grezzo; altrimenti codifica AAC mentre registra (file piccolo)
+        val out: RandomAccessFile? = if (bitrate <= 0) RandomAccessFile(File(path), "rw").also {
+            it.setLength(0)
+            it.write(ByteArray(44)) // spazio per l'intestazione WAV
+        } else null
+        val enc: AacEncoder? = if (bitrate > 0) AacEncoder(
+            path, RATE, channels,
+            intent.getIntExtra(EXTRA_OUT_CH, channels),
+            bitrate,
+            intent.getBooleanExtra(EXTRA_HE, true),
+        ) else null
 
         rec.startRecording()
         if (rec.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
-            out.close()
+            out?.close()
+            enc?.finish()
             File(path).delete()
             throw IllegalStateException("La registrazione non è partita (microfono occupato?)")
         }
@@ -195,15 +208,19 @@ class RecordService : Service() {
                         bytes[2 * i + 1] = ((s shr 8) and 0xff).toByte()
                     }
                     level = peak / 32768f
-                    out.write(bytes, 0, n * 2)
+                    out?.write(bytes, 0, n * 2)
+                    enc?.write(bytes, 0, n * 2)
                     total += n * 2
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Errore scrittura", e)
             } finally {
                 try {
-                    writeHeader(out, total, channels)
-                    out.close()
+                    if (out != null) {
+                        writeHeader(out, total, channels)
+                        out.close()
+                    }
+                    enc?.finish()
                 } catch (e: Exception) {
                     Log.e(TAG, "Errore chiusura", e)
                 }
@@ -224,7 +241,7 @@ class RecordService : Service() {
         running = false
         level = 0f
         try { record?.stop() } catch (_: Exception) {}
-        try { thread?.join(3000) } catch (_: Exception) {}
+        try { thread?.join(8000) } catch (_: Exception) {}
         try { record?.release() } catch (_: Exception) {}
         try { suppressor?.release() } catch (_: Exception) {}
         try { projection?.stop() } catch (_: Exception) {}

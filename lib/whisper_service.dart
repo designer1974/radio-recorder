@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:whisper_ggml/whisper_ggml.dart';
 
+import 'recorder.dart';
 import 'transcript.dart';
 
 enum Quality { fast, balanced, precise }
@@ -109,7 +110,20 @@ class WhisperService {
     onStage('Preparo l\'audio…', null);
     final cache = await getTemporaryDirectory();
     final tmp = '${cache.path}/whisper_input.wav';
-    await convertInBackground(wavPath, tmp);
+    var source = wavPath;
+    String? decoded;
+    if (isCompressed(wavPath)) {
+      decoded = '${cache.path}/whisper_decoded.wav';
+      await Recorder.toWav(wavPath, decoded,
+          progress: (v) => onStage('Preparo l\'audio…', v));
+      source = decoded;
+    }
+    await convertInBackground(source, tmp);
+    if (decoded != null) {
+      try {
+        File(decoded).deleteSync();
+      } catch (_) {}
+    }
 
     onStage('Trascrivo… 0%', 0);
     // (il tipo del risultato non è esportato dalla libreria)
