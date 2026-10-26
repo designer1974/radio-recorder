@@ -53,7 +53,7 @@ jobs:
       - name: Compila APK
         run: |
           report() { msg=$(grep -E "$2" "$1" | head -40 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}'); [ -z "$msg" ] && msg=$(tail -40 "$1" | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}'); echo "::error title=$3::$msg"; }
-          flutter build apk --release --split-per-abi --target-platform android-arm64,android-arm > out.txt 2>&1 || { report out.txt "error|What went wrong|e: |FAILURE|Could not" Build; exit 1; }
+          flutter build apk --release --split-per-abi --target-platform android-arm64,android-arm > out.txt 2>&1 || { grep -A25 "What went wrong" out.txt > err.txt || true; grep -E "^e: |error:" out.txt | head -20 >> err.txt || true; report err.txt "." Build; exit 1; }
           tail -5 out.txt
 
       - name: Rinomina APK
