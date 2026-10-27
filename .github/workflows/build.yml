@@ -39,6 +39,11 @@ jobs:
           for f in android/app/build.gradle.kts android/app/build.gradle; do
             [ -f "$f" ] && sed -i -E 's/minSdk( =|Version)? *flutter\.minSdkVersion/minSdk = 29/' "$f" && grep -n "minSdk" "$f" || true
           done
+          # Versione di prova Pro: app separata, si installa ACCANTO a Devoo Recorder normale
+          for f in android/app/build.gradle.kts android/app/build.gradle; do
+            [ -f "$f" ] && sed -i -E 's/applicationId( =)? *"com\.designer1974\.radio_recorder"/applicationId = "com.designer1974.radio_recorder.pro"/' "$f" && grep -n "applicationId" "$f" || true
+          done
+          sed -i 's/android:label="Devoo Recorder"/android:label="Devoo Recorder Pro"/' android/app/src/main/AndroidManifest.xml
 
       - name: Dipendenze
         run: |
@@ -71,8 +76,8 @@ jobs:
 
       - name: Rinomina APK
         run: |
-          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk DevooRecorder.apk
-          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk DevooRecorder-telefoni-vecchi.apk
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk DevooRecorderPro.apk
+          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk DevooRecorderPro-telefoni-vecchi.apk
           ls -la *.apk
 
       - uses: actions/upload-artifact@v4
@@ -84,8 +89,8 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
-          name: Devoo Recorder build ${{ github.run_number }}
+          name: Devoo Recorder Pro build ${{ github.run_number }}
           files: |
-            DevooRecorder.apk
-            DevooRecorder-telefoni-vecchi.apk
+            DevooRecorderPro.apk
+            DevooRecorderPro-telefoni-vecchi.apk
           make_latest: true
