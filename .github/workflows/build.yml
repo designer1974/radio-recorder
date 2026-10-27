@@ -55,6 +55,13 @@ jobs:
           report() { msg=$(grep -E "$2" "$1" | head -40 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}'); [ -z "$msg" ] && msg=$(tail -40 "$1" | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}'); echo "::error title=$3::$msg"; }
           flutter test > out.txt 2>&1 || { report out.txt "Expected|Actual|Error|error|FAILED|\\.dart:[0-9]+" Test; exit 1; }
 
+      # Firma sempre uguale: così ogni nuova versione si installa SOPRA la vecchia
+      # (chiave solo per le prove da GitHub; per il Play Store si usa una chiave diversa e segreta)
+      - name: Chiave di firma fissa
+        run: |
+          mkdir -p ~/.android
+          cp .github/test-signing.keystore ~/.android/debug.keystore
+
       # Un APK per tipo di processore: molto più leggero
       - name: Compila APK
         run: |
