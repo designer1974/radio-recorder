@@ -1,7 +1,7 @@
 name: radio_recorder
 description: Registratore audio avanzato - audio interno ed esterno, riduzione rumore, gestione e condivisione delle registrazioni.
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.1.0+2
 
 environment:
   sdk: ">=3.4.0 <4.0.0"
@@ -17,6 +17,11 @@ dependencies:
   google_mlkit_language_id: any
   google_mlkit_translation: any
   scrollable_positioned_list: any
+  in_app_purchase: ^3.2.0
+  in_app_purchase_android: any
+  in_app_update: any
+  package_info_plus: any
+  url_launcher: any
 
 dev_dependencies:
   flutter_test:

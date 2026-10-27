@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'pro.dart';
+import 'pro_ui.dart';
 import 'recorder.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -18,6 +20,22 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    Pro.i.addListener(_refresh);
+  }
+
+  @override
+  void dispose() {
+    Pro.i.removeListener(_refresh);
+    super.dispose();
+  }
+
+  void _refresh() {
+    if (mounted) setState(() {});
+  }
+
+  @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
@@ -25,6 +43,8 @@ class _SettingsPageState extends State<SettingsPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          const ProSettingsCard(),
+          const SizedBox(height: 16),
           Text('Sorgente audio', style: Theme.of(context).textTheme.titleSmall),
           const SizedBox(height: 8),
           SegmentedButton<bool>(
@@ -53,12 +73,22 @@ class _SettingsPageState extends State<SettingsPage> {
           const SizedBox(height: 16),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text('Riduzione rumore'),
+            title: Row(children: [
+              const Text('Riduzione rumore'),
+              const SizedBox(width: 8),
+              if (featureBadge(Feature.noiseReduction) case final b?) b,
+            ]),
             subtitle: Text(s.internal
                 ? 'Toglie ronzii bassi e fruscio nei silenzi'
                 : 'Usa il filtro anti-rumore del telefono'),
             value: s.noise,
-            onChanged: (v) => _set(() => s.noise = v),
+            onChanged: (v) async {
+              if (v && Pro.i.locked(Feature.noiseReduction)) {
+                await openPaywall(context, highlight: Feature.noiseReduction);
+                if (!Pro.i.isPro) return;
+              }
+              _set(() => s.noise = v);
+            },
           ),
           const SizedBox(height: 8),
           Text('Qualità e spazio', style: Theme.of(context).textTheme.titleSmall),
@@ -68,11 +98,25 @@ class _SettingsPageState extends State<SettingsPage> {
               contentPadding: EdgeInsets.zero,
               value: q,
               groupValue: s.quality,
-              title: Text(q == AudioQuality.voice
-                  ? '${q.label}  ★ consigliata'
-                  : q.label),
+              title: Row(children: [
+                Flexible(
+                  child: Text(q == AudioQuality.voice
+                      ? '${q.label}  ★ consigliata'
+                      : q.label),
+                ),
+                if (q.isPro && Pro.i.locked(Feature.hqAudio)) ...[
+                  const SizedBox(width: 8),
+                  const ProBadge(),
+                ],
+              ]),
               subtitle: Text(q.info),
-              onChanged: (v) => _set(() => s.quality = v!),
+              onChanged: (v) async {
+                if (v!.isPro && Pro.i.locked(Feature.hqAudio)) {
+                  await openPaywall(context, highlight: Feature.hqAudio);
+                  if (!Pro.i.isPro) return;
+                }
+                _set(() => s.quality = v);
+              },
             ),
           const SizedBox(height: 8),
           SwitchListTile(

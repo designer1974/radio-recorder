@@ -162,7 +162,8 @@ class Pro extends ChangeNotifier {
     _expiry = exp == null || exp == 0 ? null : DateTime.fromMillisecondsSinceEpoch(exp);
     // Senza internet l'utente Pro resta Pro fino alla scadenza salvata
     _pro = (p.getBool('pro') ?? false) && (_expiry == null || _expiry!.isAfter(DateTime.now()));
-    _simulated = kTestMode && (p.getBool('pro_simulated') ?? false);
+    // Versione di prova: l'admin parte già con Pro attivo
+    _simulated = kTestMode && (p.getBool('pro_simulated') ?? true);
 
     final cached = p.getString('pro_config');
     if (cached != null) {

@@ -12,6 +12,8 @@ import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'flags.dart';
+import 'pro.dart';
+import 'pro_ui.dart';
 import 'transcript.dart';
 import 'whisper_service.dart';
 
@@ -189,6 +191,7 @@ class _TranscriptPageState extends State<TranscriptPage> {
       setState(() => _trLang = null);
       return;
     }
+    if (!await requireFeature(context, Feature.translate) || !mounted) return;
     await p.setString('trLang', to);
     if (t.translations.containsKey(to)) {
       setState(() => _trLang = to);
@@ -546,7 +549,7 @@ class _TranscriptPageState extends State<TranscriptPage> {
                 child: Chip(
                   avatar: const Icon(Icons.translate, size: 18),
                   label: Text(_trLang == null
-                      ? 'Traduci'
+                      ? (Pro.i.locked(Feature.translate) ? 'Traduci · PRO' : 'Traduci')
                       : '${langFlag(_trLang!)} ${langName(_trLang!)}'),
                 ),
               ),

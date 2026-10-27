@@ -15,6 +15,8 @@ extension AudioQualityX on AudioQuality {
   int get outCh => this == AudioQuality.minimum ? 1 : 2;
   bool get he => this != AudioQuality.high;
   String get ext => this == AudioQuality.wav ? 'wav' : 'm4a';
+  /// Qualità riservate a Pro.
+  bool get isPro => this == AudioQuality.high || this == AudioQuality.wav;
   String get label => switch (this) {
         AudioQuality.voice => 'Voce',
         AudioQuality.medium => 'Media',

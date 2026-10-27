@@ -11,13 +11,20 @@ import 'package:share_plus/share_plus.dart';
 import 'flags.dart';
 import 'editor.dart';
 import 'name_dialog.dart';
+import 'pro.dart';
+import 'pro_ui.dart';
 import 'rec_panel.dart';
 import 'recorder.dart';
 import 'settings_page.dart';
 import 'transcript.dart';
 import 'transcript_page.dart';
+import 'updates.dart';
 
-void main() => runApp(const RadioRecorderApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Pro.i.init();
+  runApp(const RadioRecorderApp());
+}
 
 const _seed = Color(0xFF5B4BDB);
 
@@ -119,11 +126,18 @@ class _HomePageState extends State<HomePage> {
     _init();
     _player.onPlayerComplete.listen((_) => setState(() => _playing = null));
     Recorder.setOnStopped(_onStopped);
+    Pro.i.addListener(_onPro);
+    WidgetsBinding.instance.addPostFrameCallback((_) => checkForUpdates(context));
+  }
+
+  void _onPro() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
     _ticker?.cancel();
+    Pro.i.removeListener(_onPro);
     _player.dispose();
     super.dispose();
   }
@@ -185,14 +199,30 @@ class _HomePageState extends State<HomePage> {
     }
     await _player.stop();
     setState(() => _playing = null);
+    // Funzioni Pro attive nelle impostazioni: se non sono sbloccate si registra senza
+    var noise = _settings.noise;
+    var quality = _settings.quality;
+    if (noise && Pro.i.check(Feature.noiseReduction) is! Allowed) {
+      if (Pro.i.check(Feature.noiseReduction) is Trial) {
+        await Pro.i.useTrial(Feature.noiseReduction);
+        _snack('Riduzione rumore: prova gratuita usata');
+      } else {
+        noise = false;
+        _snack('Riduzione rumore è Pro: registro senza');
+      }
+    }
+    if (quality.isPro && Pro.i.locked(Feature.hqAudio)) {
+      quality = AudioQuality.voice;
+      _snack('Qualità ${_settings.quality.label} è Pro: registro in qualità Voce');
+    }
     final tmp =
-        '${_dir!.path}/.tmp_${DateTime.now().millisecondsSinceEpoch}.${_settings.quality.ext}';
+        '${_dir!.path}/.tmp_${DateTime.now().millisecondsSinceEpoch}.${quality.ext}';
     try {
       await Recorder.start(
         path: tmp,
         internal: _settings.internal,
-        noise: _settings.noise,
-        quality: _settings.quality,
+        noise: noise,
+        quality: quality,
       );
       setState(() {
         _recording = true;
@@ -287,6 +317,9 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _text(Rec r) async {
     if (_recording) return;
+    // Il testo già creato si legge sempre; per crearne uno nuovo serve Pro (o la prova)
+    if (!hasTranscript(r.file.path) && !await requireFeature(context, Feature.transcribe)) return;
+    if (!mounted) return;
     await _player.stop();
     setState(() => _playing = null);
     await Navigator.push(
@@ -401,6 +434,12 @@ class _HomePageState extends State<HomePage> {
         title: const Text('Devoo Recorder'),
         actions: [
           IconButton(
+            icon: Icon(Pro.i.isPro ? Icons.workspace_premium : Icons.workspace_premium_outlined),
+            color: Pro.i.isPro ? Theme.of(context).colorScheme.primary : null,
+            tooltip: 'Devoo Recorder Pro',
+            onPressed: () => openPaywall(context),
+          ),
+          IconButton(
             icon: const Icon(Icons.settings_outlined),
             tooltip: 'Impostazioni',
             onPressed: _recording
@@ -415,6 +454,7 @@ class _HomePageState extends State<HomePage> {
       ),
       body: Column(
         children: [
+          if (!_recording) const ProBanner(),
           if (flags.isNotEmpty)
             SizedBox(
               height: 52,
@@ -546,11 +586,14 @@ class _HomePageState extends State<HomePage> {
                     child: ListTile(
                         leading: Icon(Icons.compress_rounded),
                         title: Text('Comprimi (risparmia spazio)'))),
-              const PopupMenuItem(
+              PopupMenuItem(
                   value: 'text',
                   child: ListTile(
-                      leading: Icon(Icons.subtitles_outlined),
-                      title: Text('Testo (trascrizione)'))),
+                      leading: const Icon(Icons.subtitles_outlined),
+                      title: const Text('Testo (trascrizione)'),
+                      trailing: hasTranscript(r.file.path)
+                          ? null
+                          : featureBadge(Feature.transcribe))),
               const PopupMenuItem(
                   value: 'edit',
                   child: ListTile(

@@ -7,6 +7,8 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import 'pro.dart';
+import 'pro_ui.dart';
 import 'recorder.dart';
 import 'transcript.dart';
 import 'wav_edit.dart';
@@ -175,15 +177,17 @@ class _EditorPageState extends State<EditorPage> {
     });
   }
 
-  void _cutSel() {
+  Future<void> _cutSel() async {
     if (!_hasSel) return;
+    if (!await requireFeature(context, Feature.editFull) || !mounted || !_hasSel) return;
     final a = _selA!, b = _selB!;
     _apply(cut(_segs, a, b), cursor: a);
     _snack('Tagliato ${_fmt(b - a)} e unito');
   }
 
-  void _keepSel() {
+  Future<void> _keepSel() async {
     if (!_hasSel) return;
+    if (!await requireFeature(context, Feature.editFull) || !mounted || !_hasSel) return;
     _apply(keep(_segs, _selA!, _selB!), cursor: 0).then((_) {
       if (mounted) setState(_fit);
     });
@@ -791,12 +795,12 @@ class _EditorPageState extends State<EditorPage> {
                 style: FilledButton.styleFrom(
                     backgroundColor: scheme.error,
                     foregroundColor: scheme.onError),
-                icon: const Icon(Icons.content_cut),
+                icon: Icon(Pro.i.locked(Feature.editFull) ? Icons.lock : Icons.content_cut),
                 label: const Text('Taglia selezione e unisci'),
               ),
               FilledButton.tonalIcon(
                 onPressed: _hasSel ? _keepSel : null,
-                icon: const Icon(Icons.crop),
+                icon: Icon(Pro.i.locked(Feature.editFull) ? Icons.lock : Icons.crop),
                 label: const Text('Tieni solo selezione'),
               ),
               OutlinedButton.icon(
