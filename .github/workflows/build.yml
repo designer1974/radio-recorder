@@ -8,6 +8,11 @@ on:
 permissions:
   contents: write
 
+# Le app si pubblicano anche nel progetto pubblico «devoo-apps» (serve il secret APPS_TOKEN).
+# Così questo progetto, con il codice, può restare privato.
+env:
+  HAS_APPS: ${{ secrets.APPS_TOKEN != '' }}
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -94,3 +99,17 @@ jobs:
             DevooRecorderPro.apk
             DevooRecorderPro-telefoni-vecchi.apk
           make_latest: true
+
+      - name: Pubblica in devoo-apps
+        if: env.HAS_APPS == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          repository: designer1974/devoo-apps
+          token: ${{ secrets.APPS_TOKEN }}
+          target_commitish: main
+          tag_name: recorder-build-${{ github.run_number }}
+          name: Devoo Recorder Pro build ${{ github.run_number }}
+          files: |
+            DevooRecorderPro.apk
+            DevooRecorderPro-telefoni-vecchi.apk
+          make_latest: false
